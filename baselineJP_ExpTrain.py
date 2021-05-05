@@ -2,7 +2,7 @@ import os
 import random
 import torch
 from tqdm import tqdm
-from livelossplot import PlotLosses
+# from livelossplot import PlotLosses
 # %matplotlib inline
 
 from utils.Logger import showPlot
@@ -29,20 +29,28 @@ import time
 import torch.nn as nn
 from torch import optim
 
+from torch.utils.tensorboard import SummaryWriter
+
 
 class example_ExpTrain():
-    def __init__(self, train_pairs, test_pairs, log_dir='_logs'):
+    def __init__(self, train_pairs, test_pairs):
         self.train_pairs = train_pairs
         self.test_pairs = test_pairs
 
-        self.log_dir = log_dir
 
     def exec(self, model:Seq2Seq_batch_ptModel, 
                     epochs=30, batch_size=200,
-                    teacher_forcing=0.5, early_stopping=5,
-                    log_dir='_logs'):
+                    teacher_forcing=0.5, early_stopping=5):
         
-        liveloss = PlotLosses()
+        log_dir = model.save_m_dir
+
+        # default `log_dir` is "runs" - we'll be more specific here
+        writer = SummaryWriter(log_dir)
+        # print(model.encoder)
+        # writer.add_graph(model.encoder)
+        # writer.add_graph(model.decoder)
+
+        # liveloss = PlotLosses()
         optimizer = optim.Adam(
                         [p for p in model.encoder.parameters()]
                         + [p for p in model.decoder.parameters()] )
@@ -51,7 +59,7 @@ class example_ExpTrain():
 
         validation_bleus = []
         
-        for _ in range(epochs):
+        for epc in range(epochs):
             total_loss = 0
             for input_batch, input_lens, target_batch, target_lens in tqdm(model.generate_batch(self.train_pairs, batch_size=batch_size)):
                 loss = model.fit_batch(input_batch, input_lens,
@@ -60,6 +68,9 @@ class example_ExpTrain():
                 total_loss += loss
                 train_loss = total_loss / (len(self.train_pairs) / batch_size)
             
+            model.save()
+            writer.add_scalar('train loss', train_loss, epc)
+
             total_bleu = 0
             for input_batch, input_lens, target_batch, target_lens in tqdm(model.generate_batch(self.train_pairs, batch_size=batch_size, shuffle=False)):
                 loss, bleu = model.evaluate_batch(input_batch, input_lens,
@@ -77,17 +88,21 @@ class example_ExpTrain():
             validation_loss = total_loss / (len(self.test_pairs) / batch_size)
             validation_bleu = total_bleu / (len(self.test_pairs) / batch_size)
             
-            liveloss.update({
-                'loss': train_loss,
-                'bleu': train_bleu,
-                'val_bleu': validation_bleu
-            })
-            liveloss.draw()
+            # liveloss.update({
+            #     'loss': train_loss,
+            #     'bleu': train_bleu,
+            #     'val_bleu': validation_bleu
+            # })
+            # liveloss.draw()
+            writer.add_scalar('train loss', train_loss, epc)
+            writer.add_scalar('bleu', train_bleu, epc)
+            writer.add_scalar('val_bleu', validation_bleu, epc)
 
             validation_bleus.append(validation_bleu)
             if max(validation_bleus[-early_stopping:]) < max(validation_bleus):
                 break
         
+        writer.close()
         return max(validation_bleus)
 
 

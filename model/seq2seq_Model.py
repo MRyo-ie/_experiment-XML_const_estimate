@@ -1,4 +1,7 @@
 from abc import ABCMeta, abstractmethod
+import datetime
+import os
+import os.path as osp
 import random
 
 import torch
@@ -62,16 +65,25 @@ from nltk.translate.bleu_score import sentence_bleu
 
 class Seq2Seq_batch_ptModel():
     def __init__(self, tokenizer: Seq2SeqTranslate_ptTokenizer,
-                    device, dropout_p=0.1, max_length=18):
+                    device, dropout_p=0.1, max_length=18,
+                    save_m_dir='_logs', save_m_file_names=('encoder.pth', 'decoder.pth')):
         self.device = device
         self.tokenizer = tokenizer
 
         self.MAX_LENGTH = max_length
         self.teacher_forcing_ratio = 0.5
     
-    def load_enc_dec_models(self, encoder, decoder,):
+        dt_now = datetime.datetime.now()
+        self.save_m_dir = osp.join(save_m_dir, dt_now.strftime('%Y-%m-%d_%Hh%Mm%Ss'))
+
+    def set_models(self, encoder, decoder):
         self.encoder = encoder.to(self.device)
         self.decoder = decoder.to(self.device)
+
+    def save(self):
+        os.makedirs(self.save_m_dir, exist_ok=True)
+        self.encoder.save(osp.join(self.save_m_dir, 'encoder.pth'))
+        self.decoder.save(osp.join(self.save_m_dir, 'decoder.pth'))
 
     def exec_test(self, train_pairs, batch_size=10):
         for input_batch, input_lens, output_batch, output_lens in self.generate_batch(train_pairs, batch_size):
@@ -261,7 +273,7 @@ class Seq2Seq_GRU_Attn_ptModel():
 
         self.teacher_forcing_ratio = 0.5
         self.encoder = EncoderGRU(input_n, hidden_size).to(self.device)
-        self.decoder = AttnDecoderGRU(hidden_size, output_n, dropout_p=dropout_p).to(device)
+        self.decoder = AttnDecoderGRU(hidden_size, output_n, dropout_p=dropout_p).to(self.device)
 
         self.tokenizer = tokenizer
 

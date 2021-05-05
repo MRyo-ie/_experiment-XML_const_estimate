@@ -1,3 +1,6 @@
+import os.path as osp
+import datetime
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,11 +8,26 @@ import torch.nn.functional as F
 
 
 
+class EncoderBaseModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def load_weights(self, load_m_dir=None, load_m_file_name='encoder.pth',):
+        if load_m_dir is not None:
+            dec_path = osp.join(load_m_dir, load_m_file_name)
+            param = torch.load(dec_path)
+            self.load_state_dict(param)
+            print(f'[info] {load_m_file_name} loaded !')
+
+    def save(self, save_f_path='_logs/test/encoder.pth',):
+        torch.save(self.state_dict(), save_f_path)
+
+
 ###########################################
 ####              Encoder               ###
 ###########################################
 
-class EncoderGRU(nn.Module):
+class EncoderGRU(EncoderBaseModel):
     def __init__(self, input_size, hidden_size):
         super().__init__()
         self.hidden_size = hidden_size
@@ -27,7 +45,7 @@ class EncoderGRU(nn.Module):
         return torch.zeros(1, 1, self.hidden_size, device=device)
 
 
-class EncoderLSTM(nn.Module):
+class EncoderLSTM(EncoderBaseModel):
     def __init__(self, input_size, emb_size, hid_size, pad_token=-1):
         super().__init__()
         self.embedding_size = emb_size
