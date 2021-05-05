@@ -4,9 +4,6 @@ import random
 import unicodedata
 
 
-# SOS_token = 0
-# EOS_token = 1
-
 MAX_LENGTH = 18
 
 
@@ -15,7 +12,7 @@ class Lang:
         self.name = name
         self.word2index = {}
         self.word2count = {}
-        self.index2word = {0: "PAD", 1: "SOS", 2: "EOS"}
+        self.index2word = {-1: "PAD", 0: "SOS", 1: "EOS"}
         self.n_words = 3  # Count SOS and EOS
 
     def addSentence(self, sentence):
@@ -32,15 +29,6 @@ class Lang:
             self.word2count[word] += 1
 
 
-
-eng_prefixes = (
-    "i am ", "i m ",
-    "he is", "he s ",
-    "she is", "she s",
-    "you are", "you re ",
-    "we are", "we re ",
-    "they are", "they re "
-)
 
 
 

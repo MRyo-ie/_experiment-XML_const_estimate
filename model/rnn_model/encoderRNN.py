@@ -28,7 +28,7 @@ class EncoderGRU(nn.Module):
 
 
 class EncoderLSTM(nn.Module):
-    def __init__(self, input_size, emb_size, hid_size, pad_token=0):
+    def __init__(self, input_size, emb_size, hid_size, pad_token=-1):
         super().__init__()
         self.embedding_size = emb_size
         self.hidden_size = hid_size
@@ -40,7 +40,7 @@ class EncoderLSTM(nn.Module):
         self.linear_h = nn.Linear(hid_size * 2, hid_size)
         self.linear_c = nn.Linear(hid_size * 2, hid_size)
 
-    def forward_batch(self, input_batch, input_lens):
+    def forward(self, input_batch, input_lens):
         """
         :param input_batch: (s, b)
         :param input_lens: (b)

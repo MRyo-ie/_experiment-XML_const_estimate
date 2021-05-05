@@ -2,14 +2,24 @@ import os
 import random
 import torch
 from tqdm import tqdm
+from livelossplot import PlotLosses
+# %matplotlib inline
 
 from utils.Logger import showPlot
 from utils.Timer import asMinutes, timeSince
 
 from data.example_Data import Lang, prepareData
+from model.rnn_model.encoderRNN import (
+    EncoderLSTM, 
+)
+from model.rnn_model.decoderRNN import (
+    AttnDecoderLSTM1,
+    AttnDecoderLSTM2,
+)
 from model.seq2seq_Model import (
-    Seq2Seq_GRU_Attn_ptModel, 
+    Seq2Seq_batch_ptModel,
     Seq2SeqTranslate_ptTokenizer,
+    PAD_token,
 )
 
 
@@ -21,108 +31,118 @@ from torch import optim
 
 
 class example_ExpTrain():
-    def __init__(self, pairs):
-        self.pairs = pairs
+    def __init__(self, train_pairs, test_pairs, log_dir='_logs'):
+        self.train_pairs = train_pairs
+        self.test_pairs = test_pairs
 
-    def exec(self, model, n_iters,
-                print_every=1000, plot_every=100, 
-                learning_rate=0.01, log_dir=None):
-        start = time.time()
-        plot_losses = []
-        print_loss_total = 0  # Reset every print_every
-        plot_loss_total = 0  # Reset every plot_every
+        self.log_dir = log_dir
 
-        encoder_optimizer = optim.SGD(model.encoder.parameters(), lr=learning_rate)
-        decoder_optimizer = optim.SGD(model.decoder.parameters(), lr=learning_rate)
-        training_pairs = [model.tokenizer.get_tensors_from_pair(random.choice(self.pairs))
-                            for i in range(n_iters)]
-        criterion = nn.NLLLoss()
-
-        for iter in tqdm(range(1, n_iters + 1)):
-            training_pair = training_pairs[iter - 1]
-            input_tensor = training_pair[0]
-            target_tensor = training_pair[1]
-
-            loss = model.fit(input_tensor, target_tensor,
-                                encoder_optimizer, decoder_optimizer, criterion)
-            print_loss_total += loss
-            plot_loss_total += loss
-
-            if iter % print_every == 0:
-                print_loss_avg = print_loss_total / print_every
-                print_loss_total = 0
-                print('%s (%d %d%%) %.4f' % (timeSince(start, iter / n_iters),
-                                            iter, iter / n_iters * 100, print_loss_avg))
-
-            if iter % plot_every == 0:
-                plot_loss_avg = plot_loss_total / plot_every
-                plot_losses.append(plot_loss_avg)
-                plot_loss_total = 0
-
-        if log_dir is not None:
-            os.makedirs(log_dir, exist_ok=True)
-        save_graph_parh = os.path.join(log_dir, f'loss_{n_iters}epc')
-        showPlot(plot_losses, save_fname=save_graph_parh)
-
-
-
-
-def generate_batch(pairs, batch_size=200, shuffle=True):
-    random.shuffle(pairs)
-    
-    for i in range(len(pairs) // batch_size):
-        batch_pairs = pairs[batch_size*i:batch_size*(i+1)]
-
-        input_batch = []
-        target_batch = []
-        input_lens = []
-        target_lens = []
-        for input_seq, target_seq in batch_pairs:
-            input_seq, input_length = tensorFromSentence(input_lang, input_seq)
-            target_seq, target_length = tensorFromSentence(output_lang, target_seq)
-
-            input_batch.append(input_seq)
-            target_batch.append(target_seq)
-            input_lens.append(input_length)
-            target_lens.append(target_length)
-
-        input_batch = torch.tensor(input_batch, dtype=torch.long, device=device)
-        target_batch = torch.tensor(target_batch, dtype=torch.long, device=device)
-        input_lens = torch.tensor(input_lens)
-        target_lens = torch.tensor(target_lens)
+    def exec(self, model:Seq2Seq_batch_ptModel, 
+                    epochs=30, batch_size=200,
+                    teacher_forcing=0.5, early_stopping=5,
+                    log_dir='_logs'):
         
-        # sort
-        input_lens, sorted_idxs = input_lens.sort(0, descending=True)
-        input_batch = input_batch[sorted_idxs].transpose(0, 1)
-        input_batch = input_batch[:input_lens.max().item()]
+        liveloss = PlotLosses()
+        optimizer = optim.Adam(
+                        [p for p in model.encoder.parameters()]
+                        + [p for p in model.decoder.parameters()] )
+
+        criterion = nn.NLLLoss(ignore_index=PAD_token)
+
+        validation_bleus = []
         
-        target_batch = target_batch[sorted_idxs].transpose(0, 1)
-        target_batch = target_batch[:target_lens.max().item()]
-        target_lens = target_lens[sorted_idxs]
+        for _ in range(epochs):
+            total_loss = 0
+            for input_batch, input_lens, target_batch, target_lens in tqdm(model.generate_batch(self.train_pairs, batch_size=batch_size)):
+                loss = model.fit_batch(input_batch, input_lens,
+                                        target_batch, target_lens,
+                                        optimizer, criterion, teacher_forcing)
+                total_loss += loss
+                train_loss = total_loss / (len(self.train_pairs) / batch_size)
+            
+            total_bleu = 0
+            for input_batch, input_lens, target_batch, target_lens in tqdm(model.generate_batch(self.train_pairs, batch_size=batch_size, shuffle=False)):
+                loss, bleu = model.evaluate_batch(input_batch, input_lens,
+                                                  target_batch, target_lens, criterion)
+                total_bleu += bleu
+            train_bleu = total_bleu / (len(self.train_pairs) / batch_size)
+            
+            total_loss = 0
+            total_bleu = 0
+            for input_batch, input_lens, target_batch, target_lens in tqdm(model.generate_batch(self.test_pairs, batch_size=batch_size, shuffle=False)):
+                loss, bleu = model.evaluate_batch(input_batch, input_lens,
+                                                  target_batch, target_lens, criterion)
+                total_loss += loss
+                total_bleu += bleu
+            validation_loss = total_loss / (len(self.test_pairs) / batch_size)
+            validation_bleu = total_bleu / (len(self.test_pairs) / batch_size)
+            
+            liveloss.update({
+                'loss': train_loss,
+                'bleu': train_bleu,
+                'val_bleu': validation_bleu
+            })
+            liveloss.draw()
+
+            validation_bleus.append(validation_bleu)
+            if max(validation_bleus[-early_stopping:]) < max(validation_bleus):
+                break
         
-        yield input_batch, input_lens, target_batch, target_lens
+        return max(validation_bleus)
+
+
 
 
 
 
 
 if __name__ == "__main__":
-    hidden_size = 256
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     ## Data
     input_lang, output_lang, pairs = prepareData(
         'eng', 'fra', '_data_example/data', False)
     print(random.choice(pairs))
+    # train / test split
+    from sklearn.model_selection import train_test_split
+    train_pairs, test_pairs = train_test_split(pairs, test_size=0.2)
+
     ## Model
     tokenizer = Seq2SeqTranslate_ptTokenizer(
                     input_lang, output_lang, device)
-    seq2seq_model = Seq2Seq_GRU_Attn_ptModel(
-                        input_lang.n_words, output_lang.n_words, hidden_size,
-                        tokenizer, device, dropout_p=0.1)
 
-    exp_train = example_ExpTrain(pairs)
-    exp_train.exec(seq2seq_model, 75,
-                        print_every=5000, plot_every=10, 
-                        learning_rate=0.01, log_dir='_logs')
+    ###  test  ###
+    batch_size = 10
+    emb_size = 8
+    hid_size = 12
+    MAX_LENGTH = 18
+
+    seq2seq_test_model = Seq2Seq_batch_ptModel(
+                        tokenizer, device,
+                        dropout_p=0.1, max_length=MAX_LENGTH)
+    test_encoder = EncoderLSTM(input_lang.n_words, emb_size, hid_size)
+    test_decoder1 = AttnDecoderLSTM1(
+                        emb_size, hid_size, output_lang.n_words,
+                        device, max_length=MAX_LENGTH)
+    
+    seq2seq_test_model.load_enc_dec_models(test_encoder, test_decoder1)
+    seq2seq_test_model.exec_test(train_pairs, batch_size=batch_size)
+
+    attn_size = 9
+    test_decoder2 = AttnDecoderLSTM2(
+                        emb_size, hid_size, attn_size, 
+                        output_lang.n_words, device).to(device)
+    seq2seq_test_model.load_enc_dec_models(test_encoder, test_decoder2)
+    seq2seq_test_model.exec_test(train_pairs, batch_size=batch_size)
+
+
+    ###  exp 1  ###
+    emb_size = 1024
+    hidden_size = 1024
+
+    encoder = EncoderLSTM(input_lang.n_words, emb_size, hidden_size).to(device)
+    decoder = AttnDecoderLSTM1(emb_size, hidden_size, output_lang.n_words).to(device)
+    seq2seq_model = Seq2Seq_batch_ptModel(
+                        encoder, decoder, tokenizer, device,
+                        dropout_p=0.1, max_length=10)
 

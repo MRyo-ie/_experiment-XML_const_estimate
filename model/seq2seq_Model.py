@@ -10,12 +10,13 @@ from abc_ml.abc_model import ModelABC
 from abc_ml.abc_tokenizer import Seq2Seq_TokenizerABC
 
 from model.rnn_model.encoderRNN import EncoderGRU, EncoderLSTM
-from model.rnn_model.decoderRNN import DecoderGRU, DecoderLSTM, AttnDecoderGRU, AttnDecoderLSTM, AttnDecoderLSTM2
+from model.rnn_model.decoderRNN import DecoderGRU, DecoderLSTM, AttnDecoderGRU, AttnDecoderLSTM1, AttnDecoderLSTM2
 
 
 SOS_token = 0
 EOS_token = 1
 
+PAD_token = -1
 
 """
 Pytorch チュートリアル（Seq2Seq）
@@ -24,7 +25,7 @@ Pytorch チュートリアル（Seq2Seq）
 
 
 
-
+####    Tokenizer    ##############################################
 
 class Seq2SeqTranslate_ptTokenizer(Seq2Seq_TokenizerABC):
     def __init__(self, input_lang, output_lang, device, tensor_type="pt"):
@@ -35,6 +36,12 @@ class Seq2SeqTranslate_ptTokenizer(Seq2Seq_TokenizerABC):
     def sentence_to_indexs(self, sentence, is_input:bool):
         lang = self.input_lang if is_input else self.output_lang
         return [lang.word2index[word] for word in sentence.split(' ')]
+
+    def sentence_to_indexs_padding(self, sentence, is_input: bool, max_length):
+        indexes = sentence.split(' ')
+        length = len(indexes)
+        indexes = self.sentence_to_indexs(sentence, is_input)
+        return indexes + [EOS_token] + [0] * (max_length - length - 1), length + 1
 
     def get_tensor_from_sentence(self, sentence, is_input:bool):
         indexes = self.sentence_to_indexs(sentence, is_input)
@@ -48,59 +55,96 @@ class Seq2SeqTranslate_ptTokenizer(Seq2Seq_TokenizerABC):
 
 
 
-class Seq2Seq_LSTM_Attn_ptModel():
-    # def __init__(self, input_n, output_n, hidden_size, tokenizer, device, dropout_p=0.1, max_length=10):
-    #     self.MAX_LENGTH = max_length
-    #     self.device = device
+####    NN model    ##############################################
 
-    #     self.teacher_forcing_ratio = 0.5
-    #     self.encoder = EncoderGRU(input_n, hidden_size).to(self.device)
-    #     self.decoder = AttnDecoderGRU(hidden_size, output_n, dropout_p=dropout_p).to(device)
+import numpy as np
+from nltk.translate.bleu_score import sentence_bleu
 
-    #     self.tokenizer = tokenizer
+class Seq2Seq_batch_ptModel():
+    def __init__(self, tokenizer: Seq2SeqTranslate_ptTokenizer,
+                    device, dropout_p=0.1, max_length=18):
+        self.device = device
+        self.tokenizer = tokenizer
+
+        self.MAX_LENGTH = max_length
+        self.teacher_forcing_ratio = 0.5
     
-    def _test(self):
-        batch_size = 10
-        emb_size = 8
-        hid_size = 12
-        attn_size = 9
+    def load_enc_dec_models(self, encoder, decoder,):
+        self.encoder = encoder.to(self.device)
+        self.decoder = decoder.to(self.device)
 
-        # test encoder
-        test_encoder = EncoderLSTM(input_lang.n_words, emb_size, hid_size).to(device)
-        for input_batch, input_lens, output_batch, output_lens in generate_batch(train_pairs, batch_size):
+    def exec_test(self, train_pairs, batch_size=10):
+        for input_batch, input_lens, output_batch, output_lens in self.generate_batch(train_pairs, batch_size):
             break
-        input_batch.shape, input_lens.shape
+        print('[Info] input_batch.shape, input_lens.shape\n     = ', input_batch.shape, input_lens.shape)
 
-        encoder_outputs, (hidden_h, hidden_c) = test_encoder(input_batch, input_lens)
-        encoder_outputs.shape, hidden_h.shape, hidden_c.shape
+        enc_outputs, (hidden_h, hidden_c) = self.encoder(input_batch, input_lens)
+        print('[Info] enc_outputs.shape, hidden_h.shape, hidden_c.shape\n     = ', enc_outputs.shape, hidden_h.shape, hidden_c.shape)
 
         hidden = (hidden_h.squeeze(0), hidden_c.squeeze(0))
-        hidden[0].shape, hidden[1].shape
+        print('[Info] hidden[0].shape, hidden[1].shape\n     = ', hidden[0].shape, hidden[1].shape)
 
-        test_decoder1 = AttnDecoderLSTM1(emb_size, hid_size, output_lang.n_words, max_length=MAX_LENGTH).to(device)
-        decoder_input = torch.tensor([SOS_token] * batch_size, device=device)
-        decoder_outputs, hidden, attn_weights = test_decoder1(decoder_input, hidden, encoder_outputs)
-        decoder_outputs.shape, hidden[0].shape, hidden[1].shape, attn_weights.shape
+        dec_input = torch.tensor([SOS_token] * batch_size, device=self.device)
+        dec_outputs, hidden, attn_weights = self.decoder(dec_input, hidden, enc_outputs)
+        print('[Info] dec_outputs.shape, hidden[0].shape, hidden[1].shape, attn_weights.shape\n     = ', dec_outputs.shape, hidden[0].shape, hidden[1].shape, attn_weights.shape)
 
         criterion = nn.NLLLoss(ignore_index=PAD_token)
-        loss = criterion(decoder_outputs, output_batch[0])
-        loss.item()
+        loss = criterion(dec_outputs, output_batch[0])
+        print('[Info] loss.item()\n     = ', loss.item())
+
+
+    def generate_batch(self, pairs, batch_size=200, shuffle=True):
+        random.shuffle(pairs)
+        
+        for i in range(len(pairs) // batch_size):
+            batch_pairs = pairs[batch_size*i:batch_size*(i+1)]
+
+            input_batch = []
+            target_batch = []
+            input_lens = []
+            target_lens = []
+
+            # print(len(batch_pairs))
+            for input_seq, target_seq in batch_pairs:
+                input_seq, input_length = self.tokenizer.sentence_to_indexs_padding(input_seq, True, self.MAX_LENGTH)
+                target_seq, target_length = self.tokenizer.sentence_to_indexs_padding(target_seq, False, self.MAX_LENGTH)
+
+                input_batch.append(input_seq)
+                target_batch.append(target_seq)
+                input_lens.append(input_length)
+                target_lens.append(target_length)
+
+            # print(len(input_batch), len(input_batch[2]))
+            input_batch = torch.tensor(input_batch, dtype=torch.long, device=self.device)
+            target_batch = torch.tensor(target_batch, dtype=torch.long, device=self.device)
+            input_lens = torch.tensor(input_lens)
+            target_lens = torch.tensor(target_lens)
+            
+            # sort
+            input_lens, sorted_idxs = input_lens.sort(0, descending=True)
+            input_batch = input_batch[sorted_idxs].transpose(0, 1)
+            input_batch = input_batch[:input_lens.max().item()]
+            
+            target_batch = target_batch[sorted_idxs].transpose(0, 1)
+            target_batch = target_batch[:target_lens.max().item()]
+            target_lens = target_lens[sorted_idxs]
+            
+            yield input_batch, input_lens, target_batch, target_lens
 
 
     def fit_batch(self, input_batch, input_lens, target_batch, target_lens,
-                    encoder, decoder, optimizer, criterion,
-                    teacher_forcing_ratio=0.5):
+                    optimizer, criterion,  teacher_forcing_ratio=0.5):
         loss = 0
         optimizer.zero_grad()
 
         batch_size = input_batch.shape[1]
         target_length = target_lens.max().item()
 
-        encoder_outputs, encoder_hidden = encoder(input_batch, input_lens)  # (s, b, 2h), ((1, b, h), (1, b, h))
+        enc_outputs, enc_hidden = self.encoder(input_batch, input_lens)  # (s, b, 2h), ((1, b, h), (1, b, h))
         
-        decoder_input = torch.tensor([[SOS_token] * batch_size], device=device)  # (1, b)
-        decoder_inputs = torch.cat([decoder_input, target_batch], dim=0)  # (1,b), (n,b) -> (n+1, b)
-        decoder_hidden = (encoder_hidden[0].squeeze(0), encoder_hidden[1].squeeze(0))
+        dec_input = torch.tensor([[SOS_token] * batch_size], device=self.device)  # (1, b)
+        dec_inputs = torch.cat([dec_input, target_batch], dim=0)  # (1,b), (n,b) -> (n+1, b)
+        dec_hidden = (enc_hidden[0].squeeze(0), enc_hidden[1].squeeze(0))
         
         use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
@@ -108,62 +152,103 @@ class Seq2Seq_LSTM_Attn_ptModel():
             # Teacher forcing: Feed the target as the next input
         
             for di in range(target_length):
-                decoder_output, decoder_hidden, attention = decoder(
-                    decoder_inputs[di], decoder_hidden, encoder_outputs)
+                dec_output, dec_hidden, attention = self.decoder(
+                    dec_inputs[di], dec_hidden, enc_outputs)
 
-                loss += criterion(decoder_output, decoder_inputs[di+1])
+                loss += criterion(dec_output, dec_inputs[di+1])
         else:
-            decoder_input = decoder_inputs[0]
+            dec_input = dec_inputs[0]
             for di in range(target_length):
-                decoder_output, decoder_hidden, attention = decoder(
-                    decoder_input, decoder_hidden, encoder_outputs)
+                dec_output, dec_hidden, attention = self.decoder(
+                    dec_input, dec_hidden, enc_outputs)
 
-                loss += criterion(decoder_output, decoder_inputs[di+1])
+                loss += criterion(dec_output, dec_inputs[di+1])
 
-                _, topi = decoder_output.topk(1)  # (b,odim) -> (b,1)
-                decoder_input = topi.squeeze(1).detach() 
+                _, topi = dec_output.topk(1)  # (b,odim) -> (b,1)
+                dec_input = topi.squeeze(1).detach() 
 
         loss.backward()
-
         optimizer.step()
 
         return loss.item() / target_length
 
 
-    # def predict(self, sentence):
-    #     with torch.no_grad():
-    #         input_tensor = self.tokenizer.get_tensor_from_sentence(sentence, is_input=True)
-    #         input_length = input_tensor.size()[0]
-    #         enc_hidden = self.encoder.initHidden(self.device)
+    def evaluate_batch(self, input_batch, input_lens,
+                            target_batch, target_lens, criterion):
+        with torch.no_grad():
+            batch_size = input_batch.shape[1]
+            target_length = target_lens.max().item()
+            target_batch = target_batch[:target_length]
 
-    #         enc_outputs = torch.zeros(self.MAX_LENGTH, self.encoder.hidden_size, device=self.device)
+            loss = 0
+            
+            enc_outputs, enc_hidden = self.encoder(input_batch, input_lens)  # (s, b, 2h), ((1, b, h), (1, b, h))
+            dec_input = torch.tensor([SOS_token] * batch_size, device=self.device)  # (b)
+            dec_hidden = (enc_hidden[0].squeeze(0), enc_hidden[1].squeeze(0))
 
-    #         for ei in range(input_length):
-    #             enc_output, enc_hidden = self.encoder(input_tensor[ei],
-    #                                                     enc_hidden)
-    #             enc_outputs[ei] += enc_output[0, 0]
+            o_lang = self.tokenizer.output_lang
+            decoded_outputs = torch.zeros(target_length, batch_size, o_lang.n_words, device=self.device)
+            decoded_words = torch.zeros(batch_size, target_length, device=self.device)
+            
+            for di in range(target_length):
+                dec_output, dec_hidden, _ = self.decoder(
+                    dec_input, dec_hidden, enc_outputs)  # (b,odim), ((b,h),(b,h)), (b,il)        
+                decoded_outputs[di] = dec_output
+                
+                loss += criterion(dec_output, target_batch[di])
+            
+                _, topi = dec_output.topk(1)  # (b,odim) -> (b,1)
+                decoded_words[:, di] = topi[:, 0]  # (b)
+                dec_input = topi.squeeze(1)
+            
+            bleu = 0
+            for bi in range(batch_size):
+                try:
+                    end_idx = decoded_words[bi, :].tolist().index(EOS_token)
+                except:
+                    end_idx = target_length
+                score = self.compute_bleu(
+                    [[[o_lang.index2word[i] for i in target_batch[:, bi].tolist() if i > 2]]],
+                    [[o_lang.index2word[j] for j in decoded_words[bi, :].tolist()[:end_idx]]]
+                )
+                bleu += score
 
-    #         decoder_input = torch.tensor([[SOS_token]], device=self.device)  # SOS
+            return loss.item() / target_length, bleu / float(batch_size)
 
-    #         decoder_hidden = enc_hidden
+    def compute_bleu(self, trues, preds):
+        return np.mean([sentence_bleu(gt, p) for gt, p in zip(trues, preds)])
 
-    #         decoded_words = []
-    #         decoder_attentions = torch.zeros(self.MAX_LENGTH, self.MAX_LENGTH)
 
-    #         for di in range(self.MAX_LENGTH):
-    #             decoder_output, decoder_hidden, decoder_attention = self.decoder(
-    #                 decoder_input, decoder_hidden, enc_outputs)
-    #             decoder_attentions[di] = decoder_attention.data
-    #             topv, topi = decoder_output.data.topk(1)
-    #             if topi.item() == EOS_token:
-    #                 decoded_words.append('')
-    #                 break
-    #             else:
-    #                 decoded_words.append(self.tokenizer.output_lang.index2word[topi.item()])
+    def predict(self, sentence, max_length=18):
+        with torch.no_grad():
+            input_indxs, input_length = self.tokenizer.sentence_to_indexs_padding(sentence, True,  self.MAX_LENGTH)
+            input_batch = torch.tensor([input_indxs], dtype=torch.long, device=self.device)  # (1, s)
+            input_length = torch.tensor([input_length])  # (1)
+            
+            encoder_outputs, encoder_hidden = self.encoder(input_batch.transpose(0, 1), input_length)
 
-    #             decoder_input = topi.squeeze().detach()
+            decoder_input = torch.tensor([SOS_token], device=self.device)  # (1)
+            decoder_hidden = (encoder_hidden[0].squeeze(0), encoder_hidden[1].squeeze(0))
 
-    #         return decoded_words, decoder_attentions[:di + 1]
+            decoded_words = []
+            attentions = []
+            o_lang = self.tokenizer.output_lang
+            for di in range(max_length):
+                decoder_output, decoder_hidden, attention = self.decoder(
+                    decoder_input, decoder_hidden, encoder_outputs)  # (1,odim), ((1,h),(1,h)), (l,1)
+                attentions.append(attention)
+                _, topi = decoder_output.topk(1)  # (1, 1)
+                if topi.item() == EOS_token:
+                    decoded_words.append('<EOS>')
+                    break
+                else:
+                    decoded_words.append(o_lang.index2word[topi.item()])
+
+                decoder_input = topi[0]
+            
+            attentions = torch.cat(attentions, dim=0)  # (l, n)
+            
+            return decoded_words, attentions.squeeze(0).cpu().numpy()
 
 
 
@@ -244,25 +329,25 @@ class Seq2Seq_GRU_Attn_ptModel():
                                                         enc_hidden)
                 enc_outputs[ei] += enc_output[0, 0]
 
-            decoder_input = torch.tensor([[SOS_token]], device=self.device)  # SOS
+            dec_input = torch.tensor([[SOS_token]], device=self.device)  # SOS
 
-            decoder_hidden = enc_hidden
+            dec_hidden = enc_hidden
 
             decoded_words = []
             decoder_attentions = torch.zeros(self.MAX_LENGTH, self.MAX_LENGTH)
 
             for di in range(self.MAX_LENGTH):
-                decoder_output, decoder_hidden, decoder_attention = self.decoder(
-                    decoder_input, decoder_hidden, enc_outputs)
+                dec_output, dec_hidden, decoder_attention = self.decoder(
+                    dec_input, dec_hidden, enc_outputs)
                 decoder_attentions[di] = decoder_attention.data
-                topv, topi = decoder_output.data.topk(1)
+                topv, topi = dec_output.data.topk(1)
                 if topi.item() == EOS_token:
                     decoded_words.append('')
                     break
                 else:
                     decoded_words.append(self.tokenizer.output_lang.index2word[topi.item()])
 
-                decoder_input = topi.squeeze().detach()
+                dec_input = topi.squeeze().detach()
 
             return decoded_words, decoder_attentions[:di + 1]
 

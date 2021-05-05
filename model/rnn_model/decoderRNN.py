@@ -10,7 +10,7 @@ import torch.nn.functional as F
 ###########################################
 
 class DecoderLSTM(nn.Module):
-    def __init__(self, emb_size, hidden_size, output_size, pad_token=0):
+    def __init__(self, emb_size, hidden_size, output_size, pad_token=-1):
         super().__init__()
 
         self.embedding = nn.Embedding(output_size, emb_size, padding_idx=pad_token)
@@ -49,7 +49,7 @@ class DecoderGRU(nn.Module):
         return output, hidden
 
     def initHidden(self, device):
-        return torch.zeros(1, 1, self.hidden_size, device=device)
+        return torch.zeros(1, 1, self.hidden_size, device=self.device)
 
 
 
@@ -59,9 +59,9 @@ class DecoderGRU(nn.Module):
 ##          Attention  Decoder           ##
 ###########################################
 
-class AttnDecoderLSTM(nn.Module):
-    def __init__(self, emb_size, hidden_size, output_size, max_length=20):
-        super(AttnDecoderRNN1, self).__init__()
+class AttnDecoderLSTM1(nn.Module):
+    def __init__(self, emb_size, hidden_size, output_size, device, max_length=20):
+        super().__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.max_length = max_length
@@ -72,6 +72,8 @@ class AttnDecoderLSTM(nn.Module):
 
         self.lstm = nn.LSTMCell(hidden_size, hidden_size)
         self.out = nn.Linear(hidden_size, output_size)
+
+        self.device = device
 
     def forward(self, input, hidden, encoder_outputs):
         """
@@ -88,7 +90,7 @@ class AttnDecoderLSTM(nn.Module):
                 self.max_length - input_length,
                 encoder_outputs.shape[1],
                 encoder_outputs.shape[2],
-                device=device
+                device=self.device
             )
         ], dim=0)  # (il,b,2h), (ml-il,b,2h) -> (ml,b,2h)
         drop_encoder_outputs = F.dropout(encoder_outputs, p=0.1, training=self.training)
@@ -120,7 +122,7 @@ class AttnDecoderLSTM(nn.Module):
 
 
 class AttnDecoderLSTM2(nn.Module):
-    def __init__(self, emb_size, hidden_size, attn_size, output_size, pad_token=0):
+    def __init__(self, emb_size, hidden_size, attn_size, output_size, device, pad_token=-1, max_length=10):
         super().__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -131,6 +133,8 @@ class AttnDecoderLSTM2(nn.Module):
         self.score_w = nn.Linear(2*hidden_size, 2*hidden_size)
         self.attn_w = nn.Linear(4*hidden_size, attn_size)
         self.out_w = nn.Linear(attn_size, output_size)
+
+        self.device = device
 
     def forward(self, input, hidden, encoder_outputs):
         """
@@ -167,7 +171,7 @@ class AttnDecoderLSTM2(nn.Module):
         #concat = F.dropout(concat, p=0.5, training=self.training)
 
         attentional = self.attn_w(concat)  # (b,4h) -> (b,a)
-        attentional = F.tanh(attentional)
+        attentional = torch.tanh(attentional)
         #attentional = F.dropout(attentional, p=0.5, training=self.training)
 
         output = self.out_w(attentional)  # (b,a) -> (b,o)
@@ -179,7 +183,7 @@ class AttnDecoderLSTM2(nn.Module):
 
 
 class AttnDecoderGRU(nn.Module):
-    def __init__(self, hidden_size, output_size, dropout_p=0.1, max_length=10):
+    def __init__(self, hidden_size, output_size, device, dropout_p=0.1, max_length=10):
         super(AttnDecoderGRU, self).__init__()
 
         self.hidden_size = hidden_size
@@ -193,6 +197,8 @@ class AttnDecoderGRU(nn.Module):
         self.dropout = nn.Dropout(self.dropout_p)
         self.gru = nn.GRU(self.hidden_size, self.hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
+
+        self.device = device
 
     def forward(self, input, hidden, enc_outputs):
         embedded = self.embedding(input).view(1, 1, -1)
@@ -213,6 +219,6 @@ class AttnDecoderGRU(nn.Module):
         return output, hidden, attn_weights
 
     def initHidden(self, device):
-        return torch.zeros(1, 1, self.hidden_size, device=device)
+        return torch.zeros(1, 1, self.hidden_size, device=self.device)
 
 

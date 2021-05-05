@@ -3,7 +3,7 @@ import random
 import torch
 import torch.nn as nn
 
-from utils.Logger import showPlot
+from utils.Logger import showPlot, show_attention
 from utils.Timer import asMinutes, timeSince
 
 from data.example_Data import Lang, prepareData
@@ -14,7 +14,8 @@ from model.seq2seq_Model import (
 
 
 
-###  Visualizing Attention  ##########################################
+
+###  Print (simple)  ##########################################
 
 def eval_print_randomly(model, pairs, n=10):
     for i in range(n):
@@ -25,6 +26,28 @@ def eval_print_randomly(model, pairs, n=10):
         output_sentence = ' '.join(output_words)
         print('<', output_sentence)
         print('')
+
+
+
+###  Print (Full)  ##########################################
+
+def evaluate_batch_randomly(model, pairs, n=10): 
+    scores = []
+    for i in range(n):
+        pair = random.choice(pairs)
+        print('>', pair[0])
+        print('=', pair[1])
+        output_words, attentions = model.predict(pair[0])
+        output_sentence = ' '.join(output_words)
+        print('<', output_sentence)
+        score = model.compute_bleu([[pair[1].split()]], [output_words[:-1]])
+        print('bleu:', score)
+        print('')
+
+        show_attention(pair[0], output_words, attentions)
+        scores.append(score)
+    return scores
+
 
 
 
@@ -103,46 +126,6 @@ def eval_print_randomly(model, pairs, n=10):
 # print(predict_df.query('judge == "X"').head(10))
 
 
-def batch_evaluation(input_batch, input_lens, target_batch, target_lens, encoder, decoder, criterion):
-    with torch.no_grad():
-        
-        batch_size = input_batch.shape[1]
-        target_length = target_lens.max().item()
-        target_batch = target_batch[:target_length]
-
-        loss = 0
-        
-        encoder_outputs, encoder_hidden = encoder(input_batch, input_lens)  # (s, b, 2h), ((1, b, h), (1, b, h))
-        decoder_input = torch.tensor([SOS_token] * batch_size, device=device)  # (b)
-        decoder_hidden = (encoder_hidden[0].squeeze(0), encoder_hidden[1].squeeze(0))
-        decoded_outputs = torch.zeros(target_length, batch_size, output_lang.n_words, device=device)
-        decoded_words = torch.zeros(batch_size, target_length, device=device)
-        
-        for di in range(target_length):
-            decoder_output, decoder_hidden, _ = decoder(
-                decoder_input, decoder_hidden, encoder_outputs)  # (b,odim), ((b,h),(b,h)), (b,il)        
-            decoded_outputs[di] = decoder_output
-            
-            loss += criterion(decoder_output, target_batch[di])
-        
-            _, topi = decoder_output.topk(1)  # (b,odim) -> (b,1)
-            decoded_words[:, di] = topi[:, 0]  # (b)
-            decoder_input = topi.squeeze(1)
-        
-        bleu = 0
-        for bi in range(batch_size):
-            try:
-                end_idx = decoded_words[bi, :].tolist().index(EOS_token)
-            except:
-                end_idx = target_length
-            score = compute_bleu(
-                [[[output_lang.index2word[i] for i in target_batch[:, bi].tolist() if i > 2]]],
-                [[output_lang.index2word[j] for j in decoded_words[bi, :].tolist()[:end_idx]]]
-            )
-            bleu += score
-
-        return loss.item() / target_length, bleu / float(batch_size)
-
 
 
 if __name__ == "__main__":
@@ -167,3 +150,7 @@ if __name__ == "__main__":
     #         seq2seq_model, "je suis trop froid .")
     # plt.matshow(attentions.numpy())
     # plt.savefig('Attention_viz.png')
+
+    for ib, il, ob, ol in generate_batch(train_pairs, 100):
+        break
+    batch_evaluation(ib, il, ob, ol, test_encoder, test_decoder1, criterion)

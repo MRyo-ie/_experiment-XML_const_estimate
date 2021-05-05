@@ -22,3 +22,22 @@ def showPlot(points, save_fname=None):
 
 
 
+def show_attention(input_sentence, output_words, attentions):
+    # Set up figure with colorbar
+    input_words = input_sentence.split(' ')
+    
+    fig, ax = plt.subplots()
+    cax = ax.matshow(attentions[:, :len(output_words)], cmap='bone')
+    fig.colorbar(cax)
+
+    # Set up axes
+    ax.set_xticklabels([''] + input_words + ['<EOS>'], rotation=90)
+    ax.set_yticklabels([''] + output_words)
+
+    # Show label at every tick
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+    plt.show()
+
+
