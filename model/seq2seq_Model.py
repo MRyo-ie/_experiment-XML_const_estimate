@@ -75,6 +75,8 @@ class Seq2Seq_batch_ptModel():
     
         dt_now = datetime.datetime.now()
         self.save_m_dir = osp.join(save_m_dir, dt_now.strftime('%Y-%m-%d_%Hh%Mm%Ss'))
+        self.save_enc_fname = save_m_file_names[0]
+        self.save_dec_fname = save_m_file_names[1]
 
     def set_models(self, encoder, decoder):
         self.encoder = encoder.to(self.device)
@@ -82,8 +84,8 @@ class Seq2Seq_batch_ptModel():
 
     def save(self):
         os.makedirs(self.save_m_dir, exist_ok=True)
-        self.encoder.save(osp.join(self.save_m_dir, 'encoder.pth'))
-        self.decoder.save(osp.join(self.save_m_dir, 'decoder.pth'))
+        self.encoder.save(osp.join(self.save_m_dir, self.save_enc_fname))
+        self.decoder.save(osp.join(self.save_m_dir, self.save_dec_fname))
 
     def exec_test(self, train_pairs, batch_size=10):
         for input_batch, input_lens, output_batch, output_lens in self.generate_batch(train_pairs, batch_size):

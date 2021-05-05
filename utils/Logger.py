@@ -4,8 +4,16 @@ import matplotlib.ticker as ticker
 import numpy as np
 
 # Attentionの可視化で日本語フォントを使う
-plt.rcParams['font.family'] = 'Ume Gothic O5'
-plt.rcParams['font.size'] = 10
+# plt.rcParams['font.family'] = 'IPAexGothic' # 'Ume Gothic O5'
+# plt.rcParams['font.size'] = 10
+
+# import matplotlib as mpl
+# import matplotlib.pyplot as plt
+# font = {'family':'IPAexGothic'}
+# mpl.rc('font', **font)
+
+
+
 
 
 def showPlot(points, save_fname=None):
