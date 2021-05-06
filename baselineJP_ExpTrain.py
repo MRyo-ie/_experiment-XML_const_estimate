@@ -59,9 +59,9 @@ class example_ExpTrain():
 
         validation_bleus = []
         
-        for epc in range(epochs):
+        for epc in tqdm(range(epochs)):
             total_loss = 0
-            for input_batch, input_lens, target_batch, target_lens in tqdm(model.generate_batch(self.train_pairs, batch_size=batch_size)):
+            for input_batch, input_lens, target_batch, target_lens in model.generate_batch(self.train_pairs, batch_size=batch_size):
                 loss = model.fit_batch(input_batch, input_lens,
                                         target_batch, target_lens,
                                         optimizer, criterion, teacher_forcing)
@@ -69,10 +69,9 @@ class example_ExpTrain():
                 train_loss = total_loss / (len(self.train_pairs) / batch_size)
             
             model.save()
-            writer.add_scalar('train loss', train_loss, epc)
 
             total_bleu = 0
-            for input_batch, input_lens, target_batch, target_lens in tqdm(model.generate_batch(self.train_pairs, batch_size=batch_size, shuffle=False)):
+            for input_batch, input_lens, target_batch, target_lens in model.generate_batch(self.train_pairs, batch_size=batch_size, shuffle=False):
                 loss, bleu = model.evaluate_batch(input_batch, input_lens,
                                                   target_batch, target_lens, criterion)
                 total_bleu += bleu
@@ -80,7 +79,7 @@ class example_ExpTrain():
             
             total_loss = 0
             total_bleu = 0
-            for input_batch, input_lens, target_batch, target_lens in tqdm(model.generate_batch(self.test_pairs, batch_size=batch_size, shuffle=False)):
+            for input_batch, input_lens, target_batch, target_lens in model.generate_batch(self.test_pairs, batch_size=batch_size, shuffle=False):
                 loss, bleu = model.evaluate_batch(input_batch, input_lens,
                                                   target_batch, target_lens, criterion)
                 total_loss += loss
@@ -95,8 +94,9 @@ class example_ExpTrain():
             # })
             # liveloss.draw()
             writer.add_scalar('train loss', train_loss, epc)
-            writer.add_scalar('bleu', train_bleu, epc)
-            writer.add_scalar('val_bleu', validation_bleu, epc)
+            writer.add_scalar('valid loss', validation_loss, epc)
+            writer.add_scalar('train bleu', train_bleu, epc)
+            writer.add_scalar('valid bleu', validation_bleu, epc)
 
             validation_bleus.append(validation_bleu)
             if max(validation_bleus[-early_stopping:]) < max(validation_bleus):

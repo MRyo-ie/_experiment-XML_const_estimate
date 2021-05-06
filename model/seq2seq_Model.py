@@ -365,5 +365,6 @@ class Seq2Seq_GRU_Attn_ptModel():
 
             return decoded_words, decoder_attentions[:di + 1]
 
-
+    def compute_bleu(self, trues, preds):
+        return np.mean([sentence_bleu(gt, p) for gt, p in zip(trues, preds)])
 
