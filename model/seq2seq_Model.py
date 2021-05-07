@@ -269,15 +269,39 @@ class Seq2Seq_batch_ptModel():
 
 
 class Seq2Seq_GRU_Attn_ptModel():
-    def __init__(self, input_n, output_n, hidden_size, tokenizer, device, dropout_p=0.1, max_length=10):
+    def __init__(self, input_n, output_n, hidden_size, tokenizer, device,
+                    dropout_p=0.1, max_length=10,
+                    load_m_dir=None, load_m_file_names=('encoder_GRU.pth', 'decoder_GRU.pth'),
+                    save_m_dir='_logs', save_m_file_names=('encoder_GRU.pth', 'decoder_GRU.pth')):
         self.MAX_LENGTH = max_length
         self.device = device
 
         self.teacher_forcing_ratio = 0.5
-        self.encoder = EncoderGRU(input_n, hidden_size).to(self.device)
-        self.decoder = AttnDecoderGRU(hidden_size, output_n, dropout_p=dropout_p).to(self.device)
+        encoder = EncoderGRU(input_n, hidden_size)
+        decoder = AttnDecoderGRU(hidden_size, output_n,
+                                dropout_p=dropout_p, max_length=max_length)
+        if load_m_dir is not None:
+            encoder.load_weights(
+                    load_m_dir=load_m_dir, 
+                    load_m_file_name=load_m_file_names[0])
+            decoder.load_weights(
+                    load_m_dir=load_m_dir, 
+                    load_m_file_name=load_m_file_names[1])
+        self.encoder = encoder.to(self.device)
+        self.decoder = decoder.to(self.device)
+        
+        # save
+        dt_now = datetime.datetime.now()
+        self.save_m_dir = osp.join(save_m_dir, dt_now.strftime('%Y-%m-%d_%Hh%Mm%Ss_GRU'))
+        self.save_enc_fname = save_m_file_names[0]
+        self.save_dec_fname = save_m_file_names[1]
 
         self.tokenizer = tokenizer
+
+    def save(self):
+        os.makedirs(self.save_m_dir, exist_ok=True)
+        self.encoder.save(osp.join(self.save_m_dir, self.save_enc_fname))
+        self.decoder.save(osp.join(self.save_m_dir, self.save_dec_fname))
 
     def fit(self, input_tensor, target_tensor,
                 enc_optimizer, dec_optimizer, criterion):
