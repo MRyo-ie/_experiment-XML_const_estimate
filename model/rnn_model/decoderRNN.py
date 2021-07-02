@@ -83,7 +83,7 @@ class AttnDecoderLSTM1(DecoderBaseModel):
         super().__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
-        self.max_length = max_length
+        self.MAX_LENGTH = max_length
 
         self.embedding = nn.Embedding(output_size, emb_size)
         self.attn = nn.Linear(emb_size+2*hidden_size, max_length)
@@ -106,7 +106,7 @@ class AttnDecoderLSTM1(DecoderBaseModel):
         encoder_outputs = torch.cat([
             encoder_outputs,
             torch.zeros(
-                self.max_length - input_length,
+                self.MAX_LENGTH - input_length,
                 encoder_outputs.shape[1],
                 encoder_outputs.shape[2],
                 device=self.device
@@ -209,10 +209,11 @@ class AttnDecoderGRU(DecoderBaseModel):
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.dropout_p = dropout_p
-        self.max_length = max_length
+        self.MAX_LENGTH = max_length
+        print('[Info] MAX_LENGTH : ', self.MAX_LENGTH)
 
         self.embedding = nn.Embedding(self.output_size, self.hidden_size)
-        self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
+        self.attn = nn.Linear(self.hidden_size * 2, self.MAX_LENGTH)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)
         self.gru = nn.GRU(self.hidden_size, self.hidden_size)

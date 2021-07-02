@@ -4,9 +4,8 @@ import torch
 import torch.nn as nn
 
 from utils.Logger import showPlot, show_attention
-from utils.Timer import asMinutes, timeSince
+# from utils.Timer import asMinutes, timeSince
 
-from data.example_Data import Lang, prepareData
 from model.seq2seq_Model import (
     Seq2Seq_GRU_Attn_ptModel, 
     Seq2SeqTranslate_ptTokenizer,
@@ -129,6 +128,8 @@ def evaluate_batch_randomly(model, pairs, n=10):
 
 
 if __name__ == "__main__":
+    from data.example_Data import Lang, prepareData
+
     ## Experiment
     hidden_size = 256
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

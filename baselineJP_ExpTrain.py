@@ -5,20 +5,11 @@ from tqdm import tqdm
 # from livelossplot import PlotLosses
 # %matplotlib inline
 
-from utils.Logger import showPlot
-from utils.Timer import asMinutes, timeSince
+# from utils.Logger import showPlot
+# from utils.Timer import asMinutes, timeSince
 
-from data.example_Data import Lang, prepareData
-from model.rnn_model.encoderRNN import (
-    EncoderLSTM, 
-)
-from model.rnn_model.decoderRNN import (
-    AttnDecoderLSTM1,
-    AttnDecoderLSTM2,
-)
 from model.seq2seq_Model import (
     Seq2Seq_batch_ptModel,
-    Seq2SeqTranslate_ptTokenizer,
     PAD_token,
 )
 
@@ -112,6 +103,18 @@ class example_ExpTrain():
 
 
 if __name__ == "__main__":
+    from data.example_Data import Lang, prepareData
+    from model.rnn_model.encoderRNN import (
+        EncoderLSTM, 
+    )
+    from model.rnn_model.decoderRNN import (
+        AttnDecoderLSTM1,
+        AttnDecoderLSTM2,
+    )
+    from model.seq2seq_Model import (
+        Seq2SeqTranslate_ptTokenizer,
+    )
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     ## Data

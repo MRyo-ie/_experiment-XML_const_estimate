@@ -79,6 +79,8 @@ class Seq2Seq_batch_ptModel():
         self.save_dec_fname = save_m_file_names[1]
 
     def set_models(self, encoder, decoder):
+        encoder.MAX_LENGTH = self.MAX_LENGTH
+        decoder.MAX_LENGTH = self.MAX_LENGTH
         self.encoder = encoder.to(self.device)
         self.decoder = decoder.to(self.device)
 
